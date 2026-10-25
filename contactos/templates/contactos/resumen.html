@@ -1,0 +1,72 @@
+{% extends "contactos/base.html" %}
+{% block titulo %}Resumen{% endblock %}
+{% block contenido %}
+<div class="d-flex justify-content-between align-items-end mb-3">
+  <div>
+    <h1 class="h3 mb-0">Resumen de contactos</h1>
+    <p class="text-muted mb-0">{{ total }} personas · cupo de {{ cupo }} correos por semana · {{ invitables }} invitables en {{ semanas }} semana{{ semanas|pluralize }}</p>
+  </div>
+  <a href="{% url 'invitar' %}" class="btn btn-primary"><i class="bi bi-envelope-paper me-1"></i> Ver lista de esta semana</a>
+</div>
+
+<div class="row g-3 mb-4">
+  {% for label, n, color, value in tarjetas %}
+  <div class="col-6 col-md-4 col-xl-2">
+    <a href="{% url 'personas' %}?prioridad={{ value }}" class="text-decoration-none">
+      <div class="card h-100 border-start border-4 border-{{ color }}">
+        <div class="card-body">
+          <div class="text-muted small">{{ label }}</div>
+          <div class="stat text-{{ color }}">{{ n }}</div>
+        </div>
+      </div>
+    </a>
+  </div>
+  {% endfor %}
+</div>
+
+<div class="row g-3">
+  <div class="col-lg-5">
+    <div class="card h-100"><div class="card-body">
+      <h2 class="h6 text-uppercase text-muted">Participación por evento</h2>
+      <table class="table table-sm mb-0">
+        <thead><tr><th>Evento</th><th class="text-end">Invitados</th><th class="text-end">Inscritos</th><th class="text-end">Asistieron</th><th class="text-end">Asistencia</th></tr></thead>
+        <tbody>
+        {% for e in eventos %}
+          <tr><td>{{ e.nombre }}</td>
+            <td class="text-end">{{ e.invitados|default:"—" }}</td>
+            <td class="text-end">{{ e.inscritos }}</td>
+            <td class="text-end">{% if e.asistieron %}{{ e.asistieron }}{% else %}<span class="text-muted" title="Sin dato por persona">s/d</span>{% endif %}</td>
+            <td class="text-end">{% if e.asistieron and e.inscritos %}{% widthratio e.asistieron e.inscritos 100 %}%{% else %}—{% endif %}</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      <p class="small text-muted mt-2 mb-0">Asistencia = asistieron / inscritos. De 2024 no hay asistencia por persona.</p>
+    </div></div>
+  </div>
+  <div class="col-lg-3">
+    <div class="card h-100"><div class="card-body">
+      <h2 class="h6 text-uppercase text-muted">Por grupo</h2>
+      <ul class="list-group list-group-flush">
+        {% for label, n, value in grupos %}
+        <a href="{% url 'personas' %}?grupo={{ value }}" class="list-group-item list-group-item-action d-flex justify-content-between px-0">
+          {{ label }}<span class="badge text-bg-light">{{ n }}</span></a>
+        {% endfor %}
+      </ul>
+    </div></div>
+  </div>
+  <div class="col-lg-4">
+    <div class="card h-100"><div class="card-body">
+      <h2 class="h6 text-uppercase text-muted">Últimos cambios de estado</h2>
+      {% for c in ultimos_cambios %}
+        <div class="small border-bottom py-2">
+          <a href="{% url 'ficha' c.persona.persona_id %}">{{ c.persona.nombre|default:c.persona.correo }}</a>:
+          {{ c.get_estado_anterior_display }} → <strong>{{ c.get_estado_nuevo_display }}</strong>
+          <div class="text-muted">{{ c.fecha|date:"d-m-Y H:i" }}{% if c.usuario %} · {{ c.usuario }}{% endif %}{% if c.motivo %} · {{ c.motivo }}{% endif %}</div>
+        </div>
+      {% empty %}
+        <p class="text-muted small mb-0">Todavía no hay cambios registrados.</p>
+      {% endfor %}
+    </div></div>
+  </div>
+</div>
+{% endblock %}

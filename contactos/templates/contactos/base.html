@@ -1,0 +1,53 @@
+{% load static %}<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block titulo %}Contactos{% endblock %} · ISF Evento Anual</title>
+  {# Bootstrap 5.3.3 e íconos 1.11.3 incluidos en el proyecto: funciona sin internet. #}
+  <link href="{% static 'contactos/vendor/bootstrap/bootstrap.min.css' %}" rel="stylesheet">
+  <link href="{% static 'contactos/vendor/bootstrap-icons/bootstrap-icons.min.css' %}" rel="stylesheet">
+  <style>
+    :root { --isf: #1f4e78; }
+    body { background: #f4f6f9; }
+    .navbar { background: var(--isf); }
+    .card { border: 0; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+    .stat { font-size: 2rem; font-weight: 600; line-height: 1; }
+    .table td, .table th { vertical-align: middle; }
+    .btn-xs { padding: .1rem .4rem; font-size: .75rem; }
+  </style>
+</head>
+<body>
+<nav class="navbar navbar-expand-lg navbar-dark mb-4">
+  <div class="container-fluid px-4">
+    <a class="navbar-brand fw-semibold" href="{% url 'resumen' %}"><i class="bi bi-people-fill me-2"></i>ISF · Evento Anual</a>
+    {% if user.is_authenticated %}
+    <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#menu"><span class="navbar-toggler-icon"></span></button>
+    <div class="collapse navbar-collapse" id="menu">
+      <ul class="navbar-nav me-auto">
+        {% url 'resumen' as u %}<li class="nav-item"><a class="nav-link {% if request.path == u %}active{% endif %}" href="{{ u }}">Resumen</a></li>
+        {% url 'invitar' as u %}<li class="nav-item"><a class="nav-link {% if request.path == u %}active{% endif %}" href="{{ u }}">Invitar esta semana</a></li>
+        {% url 'personas' as u %}<li class="nav-item"><a class="nav-link {% if u in request.path %}active{% endif %}" href="{{ u }}">Personas</a></li>
+        {% url 'reglas' as u %}<li class="nav-item"><a class="nav-link {% if request.path == u %}active{% endif %}" href="{{ u }}">Reglas</a></li>
+        {% url 'nueva' as u %}<li class="nav-item"><a class="nav-link {% if request.path == u %}active{% endif %}" href="{{ u }}"><i class="bi bi-plus-lg"></i> Nuevo contacto</a></li>
+      </ul>
+      <span class="navbar-text text-white-50 me-3 small">{{ user.username }}</span>
+      <a class="btn btn-sm btn-outline-light me-2" href="{% url 'admin:index' %}">Admin</a>
+      <form method="post" action="{% url 'logout' %}" class="d-inline">{% csrf_token %}
+        <button class="btn btn-sm btn-light">Salir</button>
+      </form>
+    </div>
+    {% endif %}
+  </div>
+</nav>
+<main class="container-fluid px-4 pb-5">
+  {% for m in messages %}
+    <div class="alert alert-{% if m.tags == 'error' %}danger{% else %}{{ m.tags }}{% endif %} alert-dismissible fade show">
+      {{ m }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+  {% endfor %}
+  {% block contenido %}{% endblock %}
+</main>
+<script src="{% static 'contactos/vendor/bootstrap/bootstrap.bundle.min.js' %}"></script>
+</body>
+</html>

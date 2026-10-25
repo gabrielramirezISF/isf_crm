@@ -1,0 +1,44 @@
+{% extends "contactos/base.html" %}
+{% block titulo %}Reglas de prioridad{% endblock %}
+{% block contenido %}
+<div class="row justify-content-center"><div class="col-lg-7">
+  <h1 class="h3 mb-1">Reglas de prioridad</h1>
+  <p class="text-muted">Define cuánto pesa cada señal, de 1 (poco) a 10 (mucho). Al guardar se recalcula la prioridad de todas las personas.</p>
+  <form method="post" novalidate>{% csrf_token %}
+    {% if form.non_field_errors %}<div class="alert alert-danger">{{ form.non_field_errors }}</div>{% endif %}
+    <div class="card mb-3"><div class="card-body">
+      <h2 class="h6 text-uppercase text-muted mb-3">Peso de cada señal</h2>
+      {% for campo in pesos %}
+        <div class="mb-3">
+          <div class="d-flex justify-content-between">
+            <label class="form-label mb-0" for="{{ campo.id_for_label }}">{{ campo.label|capfirst }}</label>
+            <output class="badge text-bg-primary">{{ campo.value }}</output>
+          </div>
+          <div oninput="this.parentNode.querySelector('output').value = this.querySelector('input').value">{{ campo }}</div>
+          {% for e in campo.errors %}<div class="text-danger small">{{ e }}</div>{% endfor %}
+        </div>
+      {% endfor %}
+    </div></div>
+
+    <div class="card mb-3"><div class="card-body">
+      <h2 class="h6 text-uppercase text-muted mb-3">Umbrales y cupo</h2>
+      <div class="row g-3">
+        {% for campo in form %}
+          {% if campo.name == "umbral_alta" or campo.name == "umbral_media" or campo.name == "cupo_semanal" %}
+          <div class="col-md-4">
+            <label class="form-label" for="{{ campo.id_for_label }}">{{ campo.label|capfirst }}</label>
+            {{ campo }}
+            {% for e in campo.errors %}<div class="text-danger small mt-1">{{ e }}</div>{% endfor %}
+          </div>
+          {% endif %}
+        {% endfor %}
+      </div>
+    </div></div>
+
+    <div class="d-flex justify-content-end gap-2">
+      <a href="{% url 'resumen' %}" class="btn btn-outline-secondary">Cancelar</a>
+      <button class="btn btn-primary">Guardar y recalcular</button>
+    </div>
+  </form>
+</div></div>
+{% endblock %}

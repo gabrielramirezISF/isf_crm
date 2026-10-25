@@ -1,0 +1,18 @@
+{% extends "contactos/base.html" %}
+{% block titulo %}Ingresar{% endblock %}
+{% block contenido %}
+<div class="row justify-content-center mt-5"><div class="col-sm-8 col-md-5 col-lg-4">
+  <div class="card"><div class="card-body p-4">
+    <h1 class="h4 mb-3 text-center">Contactos · Evento Anual</h1>
+    {% if form.errors %}<div class="alert alert-danger small">Usuario o contraseña incorrectos.</div>{% endif %}
+    <form method="post">{% csrf_token %}
+      <input type="hidden" name="next" value="{{ next }}">
+      <div class="mb-3"><label class="form-label" for="id_username">Usuario</label>
+        <input class="form-control" name="username" id="id_username" autofocus required></div>
+      <div class="mb-3"><label class="form-label" for="id_password">Contraseña</label>
+        <input class="form-control" type="password" name="password" id="id_password" required></div>
+      <button class="btn btn-primary w-100">Ingresar</button>
+    </form>
+  </div></div>
+</div></div>
+{% endblock %}

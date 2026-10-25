@@ -1,0 +1,1 @@
+<span class="badge text-bg-{{ p.color_prioridad }}">{{ p.get_prioridad_display }}</span>{% if p.estado != "contactable" %} <span class="badge text-bg-{{ p.color_estado }}">{{ p.get_estado_display }}</span>{% endif %}

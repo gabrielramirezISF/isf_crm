@@ -1,0 +1,57 @@
+{% extends "contactos/base.html" %}
+{% block titulo %}Invitar esta semana{% endblock %}
+{% block contenido %}
+<div class="d-flex flex-wrap justify-content-between align-items-end gap-2 mb-3">
+  <div>
+    <h1 class="h3 mb-0">Invitar · semana {{ semana }}</h1>
+    <p class="text-muted mb-0">Posiciones {{ desde }}–{{ hasta }} del orden sugerido (cupo {{ cupo }}). Las bajas y los correos con problema nunca aparecen aquí.</p>
+  </div>
+  <a href="?semana={{ semana }}&formato=csv" class="btn btn-success"><i class="bi bi-download me-1"></i> Descargar CSV de la semana {{ semana }}</a>
+</div>
+
+<div class="card mb-3"><div class="card-body d-flex flex-wrap gap-3 align-items-center">
+  <div class="btn-group" role="group">
+    {% for s in semanas %}
+      <a href="?semana={{ s }}" class="btn btn-sm {% if s == semana %}btn-primary{% else %}btn-outline-primary{% endif %}">Semana {{ s }}</a>
+    {% endfor %}
+  </div>
+  <form class="d-flex gap-2 ms-auto" method="get">
+    <input type="hidden" name="semana" value="{{ semana }}">
+    <input class="form-control form-control-sm" name="q" value="{{ q }}" placeholder="Buscar en esta semana…">
+    <button class="btn btn-sm btn-outline-secondary">Buscar</button>
+  </form>
+</div></div>
+
+<div class="card"><div class="table-responsive">
+<table class="table table-hover mb-0">
+  <thead class="table-light"><tr><th>#</th><th>Nombre</th><th>Correo</th><th>Organización</th><th>Grupo</th><th>Prioridad</th><th class="text-end">Acciones rápidas</th></tr></thead>
+  <tbody>
+  {% for p in personas %}
+    <tr>
+      <td class="text-muted">{{ p.orden_sugerido }}</td>
+      <td><a href="{% url 'ficha' p.persona_id %}">{{ p.nombre|default:"(sin nombre)" }}</a></td>
+      <td class="small">{{ p.correo }}</td>
+      <td class="small">{{ p.organizacion }}</td>
+      <td class="small">{{ p.get_grupo_display }}</td>
+      <td>{% include "contactos/_badges.html" %}</td>
+      <td class="text-end text-nowrap">
+        <form method="post" action="{% url 'cambiar_estado' p.persona_id %}" class="d-inline">{% csrf_token %}
+          <input type="hidden" name="next" value="{{ request.get_full_path }}">
+          <input type="hidden" name="estado" value="correo_problema"><input type="hidden" name="motivo" value="Correo rebotó">
+          <button class="btn btn-xs btn-outline-warning" title="El correo rebotó">Rebotó</button>
+        </form>
+        <form method="post" action="{% url 'cambiar_estado' p.persona_id %}" class="d-inline"
+              onsubmit="return confirm('¿Marcar a {{ p.nombre|escapejs }} como BAJA? No se le volverá a contactar.');">{% csrf_token %}
+          <input type="hidden" name="next" value="{{ request.get_full_path }}">
+          <input type="hidden" name="estado" value="baja"><input type="hidden" name="motivo" value="Pidió no ser contactado">
+          <button class="btn btn-xs btn-outline-danger" title="Pidió no ser contactado">Baja</button>
+        </form>
+      </td>
+    </tr>
+  {% empty %}
+    <tr><td colspan="7" class="text-center text-muted py-4">No hay personas en esta semana{% if q %} que coincidan con «{{ q }}»{% endif %}.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div></div>
+{% endblock %}

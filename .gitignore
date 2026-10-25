@@ -1,0 +1,18 @@
+# Entorno y caché
+.venv/
+__pycache__/
+*.pyc
+
+# Datos personales: NUNCA al repositorio
+db.sqlite3
+*.xlsx
+*.csv
+
+#datos personales: NUNCA al repositorio
+*.json
+/referencias
+
+
+# Respaldos de la base (también tienen datos personales)
+*.respaldo
+*.sqlite3*

@@ -1,0 +1,91 @@
+{% extends "contactos/base.html" %}
+{% block titulo %}{{ p.nombre|default:p.correo }}{% endblock %}
+{% block contenido %}
+<a href="{% url 'personas' %}" class="small text-decoration-none">&larr; Personas</a>
+<div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mt-1 mb-3">
+  <div>
+    <h1 class="h3 mb-1">{{ p.nombre|default:"(sin nombre)" }} <span class="text-muted fs-6">{{ p.persona_id }}</span></h1>
+    {% include "contactos/_badges.html" %}
+    {% if en_cupo %}<span class="badge text-bg-light border">Dentro del cupo de esta semana · #{{ p.orden_sugerido }}</span>{% endif %}
+  </div>
+  <a href="{% url 'admin:contactos_persona_change' p.pk %}" class="btn btn-outline-secondary btn-sm"><i class="bi bi-pencil me-1"></i>Editar datos</a>
+</div>
+
+<div class="row g-3">
+  <div class="col-lg-4">
+    <div class="card mb-3"><div class="card-body">
+      <h2 class="h6 text-uppercase text-muted">Contacto</h2>
+      <dl class="row mb-0 small">
+        <dt class="col-5">Correo</dt><dd class="col-7"><a href="mailto:{{ p.correo }}">{{ p.correo }}</a></dd>
+        {% if p.correos_alternativos %}<dt class="col-5">Otros correos</dt><dd class="col-7">{{ p.correos_alternativos }}</dd>{% endif %}
+        <dt class="col-5">Teléfono</dt><dd class="col-7">{{ p.telefono|default:"—" }}</dd>
+        <dt class="col-5">Organización</dt><dd class="col-7">{{ p.organizacion|default:"—" }}</dd>
+        <dt class="col-5">Relación</dt><dd class="col-7">{{ p.relacion|default:"—" }}</dd>
+        <dt class="col-5">Grupo</dt><dd class="col-7">{{ p.get_grupo_display }}</dd>
+        <dt class="col-5">Puntaje</dt><dd class="col-7">{{ p.puntaje }}</dd>
+        {% if p.posible_socio_actual %}<dt class="col-5">Socio</dt><dd class="col-7">Posible socio actual (verificar)</dd>{% endif %}
+      </dl>
+      {% if p.comentarios %}<hr><p class="small mb-0"><strong>Comentarios:</strong> {{ p.comentarios }}</p>{% endif %}
+    </div></div>
+
+    <div class="card"><div class="card-body">
+      <h2 class="h6 text-uppercase text-muted">Cambiar estado</h2>
+      <form method="post" action="{% url 'cambiar_estado' p.persona_id %}">{% csrf_token %}
+        <select name="estado" class="form-select form-select-sm mb-2">
+          {% for value, label in estados %}<option value="{{ value }}" {% if value == p.estado %}selected{% endif %}>{{ label }}</option>{% endfor %}
+        </select>
+        <input name="motivo" class="form-control form-control-sm mb-2" placeholder="Motivo (ej. respondió pidiendo salir)">
+        <button class="btn btn-sm btn-primary w-100">Guardar estado</button>
+      </form>
+      <p class="small text-muted mt-2 mb-0">Queda registrado quién lo cambió y cuándo.</p>
+    </div></div>
+  </div>
+
+  <div class="col-lg-8">
+    <div class="card mb-3"><div class="card-body">
+      <div class="d-flex justify-content-between align-items-baseline">
+        <h2 class="h6 text-uppercase text-muted">Potencial para el próximo evento</h2>
+        <a href="{% url 'reglas' %}" class="small">Ajustar pesos</a>
+      </div>
+      <svg viewBox="0 0 300 300" class="d-block mx-auto" style="max-width: 340px" role="img" aria-label="Hexágono de potencial">
+        {% for anillo in radar.anillos %}<polygon points="{{ anillo }}" fill="none" stroke="#cfd6dd" stroke-width="1"/>{% endfor %}
+        {% for e in radar.ejes %}<line x1="150" y1="150" x2="{{ e.extremo.x }}" y2="{{ e.extremo.y }}" stroke="#cfd6dd" stroke-width="1"/>{% endfor %}
+        <polygon points="{{ radar.potencial }}" fill="none" stroke="#1f4e78" stroke-width="1.5" stroke-dasharray="4 3" opacity=".5"/>
+        <polygon points="{{ radar.real }}" fill="#1f4e78" fill-opacity=".35" stroke="#1f4e78" stroke-width="2"/>
+        {% for e in radar.ejes %}
+          <text x="{{ e.etiqueta.x }}" y="{{ e.etiqueta.y }}" text-anchor="middle" dominant-baseline="middle" font-size="9" fill="{% if e.cumple %}#1f4e78{% else %}#6c757d{% endif %}" font-weight="{% if e.cumple %}700{% else %}400{% endif %}">{{ e.nombre }}</text>
+        {% endfor %}
+      </svg>
+      <p class="small text-muted text-center mb-0">Relleno: lo que cumple esta persona. Línea punteada: el máximo según tus pesos. «Contactable» no suma puntaje.</p>
+    </div></div>
+
+    <div class="card mb-3"><div class="card-body">
+      <h2 class="h6 text-uppercase text-muted">Historial por evento</h2>
+      <table class="table table-sm mb-0">
+        <thead><tr><th>Evento</th><th>Invitado</th><th>Inscrito</th><th>Fecha inscripción</th><th>Respondió</th><th>Asistió</th></tr></thead>
+        <tbody>
+        {% for part in participaciones %}
+          <tr><td>{{ part.evento }}</td>
+            <td>{{ part.invitado|yesno:"✔,—" }}</td>
+            <td>{{ part.inscrito|yesno:"✔,—" }}</td>
+            <td class="small">{{ part.fecha_inscripcion|date:"d-m-Y H:i"|default:"—" }}</td>
+            <td>{{ part.respondio|yesno:"✔,—" }}</td>
+            <td>{% if part.asistio is None %}<span class="text-muted small">s/d</span>{% else %}{{ part.asistio|yesno:"✔,✘" }}{% endif %}</td></tr>
+        {% empty %}
+          <tr><td colspan="6" class="text-muted">Sin participaciones registradas.</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div></div>
+
+    <div class="card"><div class="card-body">
+      <h2 class="h6 text-uppercase text-muted">Cambios de estado</h2>
+      {% for c in cambios %}
+        <div class="small border-bottom py-2">{{ c.fecha|date:"d-m-Y H:i" }} · {{ c.get_estado_anterior_display }} → <strong>{{ c.get_estado_nuevo_display }}</strong>{% if c.usuario %} · {{ c.usuario }}{% endif %}{% if c.motivo %} · <em>{{ c.motivo }}</em>{% endif %}</div>
+      {% empty %}
+        <p class="small text-muted mb-0">Sin cambios registrados.</p>
+      {% endfor %}
+    </div></div>
+  </div>
+</div>
+{% endblock %}
