@@ -297,7 +297,7 @@ from django.core.cache import cache
 from django.test import override_settings
 
 from . import servicios
-from .models import EstadoEvento, OrigenLlegada, PosibleDuplicado, TipoEvento, Vinculo
+from .models import EstadoEvento, OrigenLlegada, PosibleDuplicado, Rol, RolEvento, TipoEvento, Vinculo
 from .vinculos import vinculo_desde_texto
 
 
@@ -425,6 +425,27 @@ class PseudocodigoTests(Dominio):
         self.assertEqual(servicios.registrar_por_qr(self.ev, "baja@x.cl").tipo, "bienvenida")
         p.refresh_from_db()
         self.assertEqual(p.estado, Estado.BAJA)
+
+
+class RolEventoTests(Dominio):
+    """ADR-007: RolEvento convive con Participación, no la reemplaza."""
+
+    def test_asignar_rol_es_idempotente(self):
+        p, _ = servicios.buscar_o_crear("auto@isf.cl", "Autoridad Uno")
+        servicios.asignar_rol(self.ev, p, Rol.AUTORIDAD)
+        servicios.asignar_rol(self.ev, p, Rol.AUTORIDAD)
+        self.assertEqual(RolEvento.objects.filter(persona=p, evento=self.ev).count(), 1)
+
+    def test_una_persona_puede_tener_varios_roles(self):
+        p, _ = servicios.buscar_o_crear("doble@isf.cl", "Rol Doble")
+        servicios.asignar_rol(self.ev, p, Rol.AUTORIDAD)
+        servicios.asignar_rol(self.ev, p, Rol.NOMINADOR)
+        self.assertEqual(RolEvento.objects.filter(persona=p, evento=self.ev).count(), 2)
+
+    def test_asignar_rol_no_crea_ni_cambia_participacion(self):
+        p, _ = servicios.buscar_o_crear("staff@isf.cl", "Staff Uno")
+        servicios.asignar_rol(self.ev, p, Rol.STAFF)
+        self.assertFalse(self.ev.participaciones.exists())
 
 
 class VinculosTests(TestCase):

@@ -22,7 +22,7 @@ from django.db import IntegrityError, transaction
 from django.utils import timezone
 
 from .models import (
-    Grupo, OrigenInscripcion, OrigenLlegada, Participacion, Persona, PosibleDuplicado,
+    Grupo, OrigenInscripcion, OrigenLlegada, Participacion, Persona, PosibleDuplicado, RolEvento,
 )
 
 
@@ -152,6 +152,14 @@ def marcar_no_puede(evento, persona):
     p.no_puede = True
     p.save(update_fields=["no_puede"])
     return p, True
+
+
+def asignar_rol(evento, persona, rol):
+    """Qué es la persona en este evento (ADR-007). Independiente de Participación:
+
+    no respeta ni cambia se_puede_contactar; eso lo decide quien llame a invitar().
+    """
+    return RolEvento.objects.get_or_create(evento=evento, persona=persona, rol=rol)
 
 
 def registrar_llegada(evento, persona, origen, cuando=None):
