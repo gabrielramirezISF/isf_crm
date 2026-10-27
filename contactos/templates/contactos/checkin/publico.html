@@ -1,0 +1,59 @@
+{% load static %}<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Registro de asistencia · {{ evento.nombre }}</title>
+  <link href="{% static 'contactos/vendor/bootstrap/bootstrap.min.css' %}" rel="stylesheet">
+  {# Pantalla pública: nunca muestra datos de nadie salvo el primer nombre de quien se registra. #}
+  <style>
+    body { background: #f4f6f9; font-size: 18px; }
+    .caja { max-width: 28rem; }
+    .form-control, .btn { font-size: 18px; padding: .8rem 1rem; }  /* ≥16px: evita el zoom en iPhone */
+    .encabezado { background: #1f4e78; }
+  </style>
+</head>
+<body>
+<div class="encabezado text-white text-center py-3 mb-4">
+  <div class="fw-semibold">ISF</div>
+  <div class="h5 mb-0">{{ evento.nombre }}</div>
+</div>
+<main class="container caja pb-5">
+  {% if cerrado %}
+    <div class="alert alert-secondary text-center">El registro de asistencia aún no está abierto.</div>
+
+  {% elif resultado %}
+    <div class="alert alert-success text-center py-4">
+      <div class="h4 mb-0">{{ resultado.mensaje }}</div>
+    </div>
+    <a href="{% url 'checkin_publico' evento.codigo %}" class="btn btn-outline-secondary w-100">Registrar a otra persona</a>
+
+  {% elif pedir_datos %}
+    <p>{{ aviso }}</p>
+    <form method="post" novalidate>{% csrf_token %}
+      <input type="hidden" name="correo" value="{{ correo }}">
+      <div class="mb-3">
+        <label class="form-label" for="nombre">Nombre y apellido</label>
+        <input class="form-control" id="nombre" name="nombre" required maxlength="200" autocomplete="name" autofocus>
+      </div>
+      <div class="mb-3">
+        <label class="form-label" for="organizacion">Organización <span class="text-muted">(opcional)</span></label>
+        <input class="form-control" id="organizacion" name="organizacion" maxlength="200" autocomplete="organization">
+      </div>
+      <button class="btn btn-primary w-100">Registrar mi llegada</button>
+    </form>
+    <a href="{% url 'checkin_publico' evento.codigo %}" class="d-block text-center mt-3">Me equivoqué de correo</a>
+
+  {% else %}
+    {% if error %}<div class="alert alert-warning">{{ error }}</div>{% endif %}
+    <form method="post">{% csrf_token %}
+      <label class="form-label" for="correo">Escribe tu correo para registrar tu llegada</label>
+      <input class="form-control mb-3" id="correo" name="correo" type="email" inputmode="email"
+             autocomplete="email" autocapitalize="off" spellcheck="false" required autofocus>
+      <button class="btn btn-primary w-100">Registrar llegada</button>
+    </form>
+  {% endif %}
+</main>
+</body>
+</html>

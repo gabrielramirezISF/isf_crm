@@ -28,6 +28,7 @@
         {% url 'resumen' as u %}<li class="nav-item"><a class="nav-link {% if request.path == u %}active{% endif %}" href="{{ u }}">Resumen</a></li>
         {% url 'invitar' as u %}<li class="nav-item"><a class="nav-link {% if request.path == u %}active{% endif %}" href="{{ u }}">Invitar esta semana</a></li>
         {% url 'personas' as u %}<li class="nav-item"><a class="nav-link {% if u in request.path %}active{% endif %}" href="{{ u }}">Personas</a></li>
+        {% url 'checkin_eventos' as u %}<li class="nav-item"><a class="nav-link {% if '/checkin/' in request.path %}active{% endif %}" href="{{ u }}"><i class="bi bi-qr-code"></i> Check-in</a></li>
         {% url 'reglas' as u %}<li class="nav-item"><a class="nav-link {% if request.path == u %}active{% endif %}" href="{{ u }}">Reglas</a></li>
         {% url 'nueva' as u %}<li class="nav-item"><a class="nav-link {% if request.path == u %}active{% endif %}" href="{{ u }}"><i class="bi bi-plus-lg"></i> Nuevo contacto</a></li>
       </ul>

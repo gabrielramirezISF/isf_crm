@@ -4,13 +4,20 @@ Cálculo de puntaje, prioridad y orden sugerido.
 Son reglas fijas y explicables (no IA): las mismas entradas dan siempre el mismo
 resultado. Los pesos se editan en el admin (modelo Reglas).
 
-"Último evento" y "evento anterior" se toman de los dos años más recientes
-cargados en Evento, así que cuando agregues el Evento 2026 las reglas se
-desplazan solas.
+"Último evento" y "evento anterior" son los dos eventos ANUALES más recientes
+por fecha, así que cuando agregues el Evento 2026 las reglas se desplazan solas.
+Las mentorías, clínicas y reuniones no afectan el puntaje (por ahora).
 """
 import math
 
-from .models import GRUPOS_ACTIVOS, Estado, Evento, Persona, Prioridad, Reglas
+from .models import GRUPOS_ACTIVOS, Estado, Evento, Persona, Prioridad, Reglas, TipoEvento
+
+
+def ultimos_anuales():
+    """Devuelve (último, anterior) como ids de Evento, o None si no existen."""
+    anuales = sorted(Evento.objects.filter(tipo=TipoEvento.ANUAL), key=lambda e: e.fecha_orden, reverse=True)
+    ids = [e.pk for e in anuales[:2]]
+    return (ids + [None, None])[0], (ids + [None, None])[1]
 
 # Estados que sacan a la persona de la lista de invitación.
 PRIORIDAD_POR_ESTADO = {
@@ -54,10 +61,10 @@ def calcular_prioridad(persona, puntaje, reglas):
 def perfil_potencial(persona, reglas):
     """Seis ejes (0-10) para el hexágono de la ficha. Cada eje vale el peso de su regla si la
     persona cumple la señal, y 0 si no. 'Contactable' no suma puntaje: indica si se le puede escribir."""
-    anios = list(Evento.objects.order_by("-anio").values_list("anio", flat=True)[:2])
-    por_anio = {part.evento.anio: part for part in persona.participaciones.select_related("evento")}
-    ultimo = por_anio.get(anios[0]) if anios else None
-    anterior = por_anio.get(anios[1]) if len(anios) > 1 else None
+    id_ultimo, id_anterior = ultimos_anuales()
+    por_evento = {part.evento_id: part for part in persona.participaciones.all()}
+    ultimo = por_evento.get(id_ultimo)
+    anterior = por_evento.get(id_anterior)
 
     ejes = [
         ("Asistió al último", reglas.puntos_asistio, bool(ultimo and ultimo.asistio)),
@@ -96,14 +103,12 @@ def perfil_potencial(persona, reglas):
 def recalcular_todo():
     """Recalcula puntaje, prioridad y orden de todas las personas. Devuelve un resumen."""
     reglas = Reglas.actuales()
-    anios = list(Evento.objects.order_by("-anio").values_list("anio", flat=True)[:2])
-    anio_ultimo = anios[0] if anios else None
-    anio_anterior = anios[1] if len(anios) > 1 else None
+    id_ultimo, id_anterior = ultimos_anuales()
 
-    personas = list(Persona.objects.prefetch_related("participaciones__evento"))
+    personas = list(Persona.objects.prefetch_related("participaciones"))
     for p in personas:
-        por_anio = {part.evento.anio: part for part in p.participaciones.all()}
-        p.puntaje = calcular_puntaje(p, por_anio.get(anio_ultimo), por_anio.get(anio_anterior), reglas)
+        por_evento = {part.evento_id: part for part in p.participaciones.all()}
+        p.puntaje = calcular_puntaje(p, por_evento.get(id_ultimo), por_evento.get(id_anterior), reglas)
         p.prioridad = calcular_prioridad(p, p.puntaje, reglas)
 
     # Orden: primero por prioridad (Alta > Media > Baja), luego puntaje, luego nombre.

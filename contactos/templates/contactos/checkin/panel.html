@@ -1,0 +1,79 @@
+{% extends "contactos/base.html" %}
+{% block titulo %}Check-in · {{ evento.nombre }}{% endblock %}
+{% block contenido %}
+<div class="d-flex flex-wrap justify-content-between align-items-end gap-2 mb-3">
+  <div>
+    <h1 class="h3 mb-0">{{ evento.nombre }}</h1>
+    <p class="text-muted mb-0">
+      Registro {% if evento.checkin_abierto %}<span class="badge bg-success">abierto</span>{% else %}<span class="badge bg-secondary">cerrado</span>{% endif %}
+      · <code>{{ url_publica }}</code>
+    </p>
+  </div>
+  <div class="d-flex flex-wrap gap-2">
+    <form method="post" action="{% url 'checkin_abrir_cerrar' evento.codigo %}">{% csrf_token %}
+      {% if evento.checkin_abierto %}
+        <button class="btn btn-outline-danger"><i class="bi bi-lock"></i> Cerrar registro</button>
+      {% else %}
+        <button class="btn btn-success"><i class="bi bi-unlock"></i> Abrir registro</button>
+      {% endif %}
+    </form>
+    <a class="btn btn-outline-primary" href="{% url 'checkin_qr' evento.codigo %}" target="_blank"><i class="bi bi-qr-code"></i> Mostrar QR</a>
+    <a class="btn btn-outline-secondary" href="{% url 'checkin_csv' evento.codigo %}"><i class="bi bi-download"></i> Exportar asistencia (CSV)</a>
+    <a class="btn btn-outline-secondary" href="{% url 'checkin_respaldo' evento.codigo %}" target="_blank"><i class="bi bi-printer"></i> Lista de respaldo</a>
+  </div>
+</div>
+
+{% if sin_url_publica %}
+  <div class="alert alert-warning small">
+    Falta <code>PUBLIC_BASE_URL</code>: el QR usa la dirección de esta página. Si estás en tu computador
+    (127.0.0.1), el QR no va a funcionar desde un celular.
+  </div>
+{% endif %}
+{% if avisos %}
+  <div class="alert alert-light small border">Pendiente para el evento (aviso, no bloquea): {{ avisos|join:", " }}.</div>
+{% endif %}
+
+<div id="estado" data-url="{% url 'checkin_estado' evento.codigo %}">
+  {% include "contactos/checkin/_estado.html" %}
+</div>
+
+<div class="card mt-3"><div class="card-body">
+  <h2 class="h6 text-uppercase text-muted">Marcar llegada a mano</h2>
+  <form class="d-flex gap-2 mb-2" method="get">
+    <input class="form-control" name="q" value="{{ q }}" placeholder="Nombre o correo" minlength="2">
+    <button class="btn btn-primary">Buscar</button>
+  </form>
+  {% if q %}
+  <table class="table table-sm mb-0">
+    {% for p, llego in encontrados %}
+      <tr>
+        <td>{{ p.nombre|default:"(sin nombre)" }}</td><td class="text-muted small">{{ p.correo }}</td>
+        <td class="text-end">
+          {% if llego %}<span class="badge bg-success">Ya llegó</span>
+          {% else %}
+          <form method="post" action="{% url 'checkin_marcar' evento.codigo p.persona_id %}">{% csrf_token %}
+            <button class="btn btn-sm btn-success">Marcar llegada</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+    {% empty %}
+      <tr><td class="text-muted">Nadie coincide con «{{ q }}». Si no está en la base, que se registre con el QR.</td></tr>
+    {% endfor %}
+  </table>
+  {% endif %}
+</div></div>
+
+<script>
+  // Refresco simple cada 15 s: pide el fragmento del contador y lo reemplaza. Sin websockets.
+  (function () {
+    const caja = document.getElementById("estado");
+    setInterval(function () {
+      fetch(caja.dataset.url, {credentials: "same-origin"})
+        .then(function (r) { if (r.ok) return r.text(); throw new Error(r.status); })
+        .then(function (html) { caja.innerHTML = html; })
+        .catch(function () { /* sin señal: se reintenta en 15 s */ });
+    }, 15000);
+  })();
+</script>
+{% endblock %}

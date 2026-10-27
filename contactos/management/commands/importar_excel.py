@@ -12,7 +12,7 @@ from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 from openpyxl import load_workbook
 
-from contactos.models import Estado, Evento, Grupo, Participacion, Persona
+from contactos.models import Estado, Evento, Grupo, Participacion, Persona, TipoEvento
 from contactos.scoring import recalcular_todo
 
 EVENTOS = {
@@ -59,7 +59,9 @@ class Command(BaseCommand):
                 raise CommandError(f"Al archivo le falta la hoja '{hoja}'.")
 
         eventos = {
-            anio: Evento.objects.update_or_create(anio=anio, defaults={"nombre": n, "fecha": f})[0]
+            anio: Evento.objects.update_or_create(
+                codigo=f"anual-{anio}", defaults={"nombre": n, "fecha": f, "anio": anio, "tipo": TipoEvento.ANUAL},
+            )[0]
             for anio, (n, f) in EVENTOS.items()
         }
 

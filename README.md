@@ -32,6 +32,8 @@ Abre http://127.0.0.1:8000/ y entra con tu usuario.
 | `/personas/P0001/` | **Ficha**: datos, historial por evento, cambiar estado con motivo |
 | `/nueva/` | Agregar un contacto (avisa si el correo ya existe) |
 | `/admin/` | Panel completo de Django (editar todo, reglas de prioridad) |
+| `/checkin/` | **Check-in con QR**: eventos y panel del día (contador, últimas llegadas, marcar a mano, QR, CSV, lista de respaldo) |
+| `/checkin/<codigo>/` | Pantalla pública del QR (sin login): la persona escribe su correo |
 
 Bootstrap 5.3.3 y Bootstrap Icons 1.11.3 vienen incluidos en `contactos/static/`
 (con sus licencias MIT): la interfaz funciona sin internet.
@@ -54,14 +56,27 @@ python manage.py exportar_invitacion --desde 301 --salida semana2.csv
 
 La exportación nunca incluye a quien está en "No invitar" o "Revisar".
 
+## Día del evento (check-in con QR)
+
+```bash
+# 1. Crear el evento en /admin/ → Eventos (nombre, tipo "anual", fecha). Su código queda anual-2026.
+# 2. Cargar (o recargar) las inscripciones del formulario. Se puede repetir sin duplicar:
+python manage.py importar_inscripciones --evento anual-2026 "../referencias/Excel Maestro - Evento Anual 2026 - Inscripciones.csv"
+# 3. Definir la URL pública para que el QR apunte al sitio publicado:
+export PUBLIC_BASE_URL=https://usuario.pythonanywhere.com
+```
+
+En `/checkin/anual-2026/panel/`: **Abrir registro**, **Mostrar QR** (imprimir) y **Lista de respaldo** (imprimir por si se cae internet).
+
 ## Cómo está organizado (orden sugerido de lectura)
 
 1. `contactos/models.py`: las tablas. Persona, Evento, Participacion, CambioEstado, Reglas.
 2. `contactos/scoring.py`: el puntaje y la prioridad, en Python puro.
 3. `contactos/admin.py`: el panel (filtros, acciones, chequeo de duplicados).
-4. `contactos/views.py` + `contactos/templates/contactos/`: las pantallas con Bootstrap.
-5. `contactos/management/commands/`: importar el Excel y exportar el CSV.
-6. `contactos/tests.py`: las reglas expresadas como pruebas (`python manage.py test`).
+4. `contactos/servicios.py`: las reglas del dominio (buscar o crear persona, invitar, inscribir, registrar llegada, check-in).
+5. `contactos/views.py`, `contactos/views_checkin.py` + `contactos/templates/contactos/`: las pantallas con Bootstrap.
+6. `contactos/management/commands/`: importar el Excel, importar inscripciones y exportar el CSV.
+7. `contactos/tests.py`: las reglas expresadas como pruebas (`python manage.py test`).
 
 ## Reglas de prioridad (valores por defecto)
 

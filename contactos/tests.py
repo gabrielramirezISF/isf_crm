@@ -288,3 +288,334 @@ class ReglasUITests(Base):
         r = self.client.get(reverse("ficha", args=[a.persona_id]))
         self.assertContains(r, "<svg")
         self.assertTrue(next(e for e in r.context["radar"]["ejes"] if e["nombre"] == "Asistió al último")["cumple"])
+
+
+# ============================================================================
+# Merge de pseudocodigo/: las 14 reglas de pruebas.py, ahora contra la base.
+# ============================================================================
+from django.core.cache import cache
+from django.test import override_settings
+
+from . import servicios
+from .models import EstadoEvento, OrigenLlegada, PosibleDuplicado, TipoEvento, Vinculo
+from .vinculos import vinculo_desde_texto
+
+
+class Dominio(TestCase):
+    def setUp(self):
+        self.ev = Evento.objects.create(nombre="Evento de prueba", tipo=TipoEvento.ANUAL, fecha=dt.date(2026, 11, 18))
+
+    def abrir(self):
+        self.ev.checkin_abierto = True
+        self.ev.save()
+
+
+class PseudocodigoTests(Dominio):
+    def test_crear_evento_es_barato(self):
+        self.assertEqual((self.ev.estado, self.ev.anio, self.ev.codigo), ("borrador", 2026, "anual-2026"))
+        self.assertIn("definir el lugar", self.ev.faltantes())
+
+    def test_avanzar_sin_requisitos_avisa_pero_no_bloquea(self):
+        # Decisión 2026-10-25: los requisitos son avisos (en 2026 no hay lista de invitados).
+        avisos = self.ev.avanzar()
+        self.assertEqual(self.ev.estado, EstadoEvento.CONVOCANDO)
+        self.assertIn("cargar la lista de invitados", avisos)
+
+    def test_correo_es_la_identidad(self):
+        a, creada1 = servicios.buscar_o_crear("  Ana@ISF.cl ", "Ana Pérez")
+        b, creada2 = servicios.buscar_o_crear("ana@isf.cl", "Ana P.")
+        self.assertEqual(a, b)
+        self.assertTrue(creada1)
+        self.assertFalse(creada2)
+
+    def test_correo_alternativo_encuentra_a_la_persona_y_es_exacto(self):
+        a, _ = servicios.buscar_o_crear("ana@isf.cl", "Ana Pérez")
+        a.correos_alternativos = "ana.perez@gmail.com"; a.save()
+        self.assertEqual(servicios.buscar_por_correo("ANA.PEREZ@gmail.com"), a)
+        # Coincidencia parcial NO es la misma persona.
+        self.assertIsNone(servicios.buscar_por_correo("na.perez@gmail.com"))
+
+    def test_nombre_parecido_queda_para_revisar_sin_fusionar(self):
+        servicios.buscar_o_crear("ana@isf.cl", "Ana Pérez Soto")
+        servicios.buscar_o_crear("ana@gmail.com", "Ana Perez")
+        self.assertEqual(Persona.objects.count(), 2)
+        self.assertEqual(PosibleDuplicado.objects.count(), 1)
+
+    def test_estado_solo_avanza_e_idempotencia(self):
+        p, _ = servicios.buscar_o_crear("ana@isf.cl", "Ana Pérez")
+        servicios.inscribir(self.ev, p, "formulario")
+        part, _ = servicios.invitar(self.ev, p)
+        self.assertEqual(part.estado, "inscrito")
+        self.assertTrue(part.invitado)
+        _, cambio = servicios.inscribir(self.ev, p, "manual")
+        self.assertFalse(cambio)
+        self.assertEqual(self.ev.participaciones.count(), 1)
+
+    def test_baja_nunca_es_invitada_ni_sale_en_envios(self):
+        p, _ = servicios.buscar_o_crear("ana@isf.cl", "Ana Pérez")
+        p.cambiar_estado(Estado.BAJA, motivo="lo pidió por correo")
+        part, _ = servicios.invitar(self.ev, p)
+        self.assertIsNone(part)
+        self.assertEqual(servicios.lista_para_enviar(self.ev), [])
+
+    def test_exclusion_dura_y_fuera_de_chile_invitable(self):
+        for estado in (Estado.BAJA, Estado.NO_CONSIDERAR, Estado.CORREO_PROBLEMA, Estado.DESACTUALIZADO):
+            p = Persona.objects.create(correo=f"{estado}@x.cl", estado=estado)
+            self.assertIsNone(servicios.invitar(self.ev, p)[0], estado)
+        lejos = Persona.objects.create(correo="lejos@x.cl", estado=Estado.FUERA_CHILE)
+        self.assertTrue(servicios.invitar(self.ev, lejos)[1])
+
+    def test_inscribir_sin_invitacion_y_no_puede(self):
+        p, _ = servicios.buscar_o_crear("ana@isf.cl", "Ana Pérez")
+        part, _ = servicios.inscribir(self.ev, p, "manual")
+        self.assertTrue(part.inscrito)
+        self.assertFalse(part.invitado)
+        part, _ = servicios.marcar_no_puede(self.ev, p)
+        self.assertEqual(part.estado, "no_puede")
+
+    def test_qr_cerrado_no_registra(self):
+        servicios.buscar_o_crear("ana@isf.cl", "Ana Pérez")
+        self.assertEqual(servicios.registrar_por_qr(self.ev, "ana@isf.cl").tipo, "cerrado")
+        self.assertFalse(self.ev.participaciones.exists())
+
+    def test_qr_hora_de_llegada_no_se_sobrescribe(self):
+        self.abrir()
+        p, _ = servicios.buscar_o_crear("ana@isf.cl", "Ana Pérez")
+        servicios.inscribir(self.ev, p, "formulario")
+        servicios.registrar_por_qr(self.ev, "ANA@isf.cl ")
+        hora = self.ev.participaciones.get(persona=p).hora_llegada
+        self.assertEqual(servicios.registrar_por_qr(self.ev, "ana@isf.cl").tipo, "ya_registrado")
+        self.assertEqual(self.ev.participaciones.get(persona=p).hora_llegada, hora)
+
+    def test_qr_desconocido_pide_datos_y_crea_una_sola_persona(self):
+        self.abrir()
+        self.assertEqual(servicios.registrar_por_qr(self.ev, "nuevo@x.cl").tipo, "pedir_datos")
+        self.assertFalse(Persona.objects.exists())
+        servicios.registrar_por_qr(self.ev, "nuevo@x.cl", "Juan Soto")
+        servicios.registrar_por_qr(self.ev, "nuevo@x.cl", "Juan Soto")
+        self.assertEqual(Persona.objects.count(), 1)
+        self.assertEqual(self.ev.participaciones.count(), 1)
+        self.assertTrue(self.ev.participaciones.get().llego_sin_inscripcion)
+
+    def test_qr_solo_muestra_primer_nombre(self):
+        self.abrir()
+        servicios.buscar_o_crear("ana@isf.cl", "Ana Pérez", "Empresa X", "+56911111111")
+        msg = servicios.registrar_por_qr(self.ev, "ana@isf.cl").mensaje
+        self.assertIn("Ana", msg)
+        for dato in ("Pérez", "Empresa", "569"):
+            self.assertNotIn(dato, msg)
+
+    def test_csv_de_envio_sin_datos_sensibles(self):
+        p, _ = servicios.buscar_o_crear("ana@isf.cl", "Ana Pérez", telefono="+56911111111")
+        servicios.inscribir(self.ev, p, "formulario", logistica={"restriccion_alimentaria": "celiaca"})
+        texto = str(list(servicios.filas_csv_envio([p])))
+        self.assertNotIn("569", texto)
+        self.assertNotIn("celiaca", texto)
+
+    def test_avanzar_no_toca_el_checkin(self):
+        # Decisión 2026-10-25: el registro se abre y cierra a mano desde el panel.
+        for _ in range(3):
+            self.ev.avanzar()
+        self.assertEqual(self.ev.estado, EstadoEvento.EN_CURSO)
+        self.assertFalse(self.ev.checkin_abierto)
+
+    def test_baja_que_llega_se_registra_sin_cambiar_estado(self):
+        self.abrir()
+        p = Persona.objects.create(correo="baja@x.cl", nombre="Bea", estado=Estado.BAJA)
+        self.assertEqual(servicios.registrar_por_qr(self.ev, "baja@x.cl").tipo, "bienvenida")
+        p.refresh_from_db()
+        self.assertEqual(p.estado, Estado.BAJA)
+
+
+class VinculosTests(TestCase):
+    def test_traduccion_del_texto_de_alvaro(self):
+        self.assertEqual(vinculo_desde_texto("Mentor/a"), ("Mentor/a", False))
+        self.assertEqual(vinculo_desde_texto("ex voluntad BioBio"), ("Voluntad", True))
+        self.assertEqual(vinculo_desde_texto("Histórico"), (None, False))
+        self.assertEqual(vinculo_desde_texto("AQUA"), ("?", False))  # se reporta, no se inventa
+
+    def test_vinculo_no_se_duplica_y_se_cierra_con_fecha(self):
+        p = Persona.objects.create(correo="v@x.cl")
+        self.assertTrue(p.agregar_vinculo("Socio"))
+        self.assertFalse(p.agregar_vinculo("Socio"))
+        p.terminar_vinculo("Socio")
+        self.assertEqual(p.vinculos_vigentes, [])
+        self.assertEqual(p.asignaciones.count(), 1)  # se cerró, no se borró
+        self.assertEqual(Vinculo.objects.count(), 1)
+
+
+class ScoringEventosTests(TestCase):
+    def test_mentorias_no_cuentan_y_se_ordena_por_fecha(self):
+        e25 = Evento.objects.create(nombre="Anual 2025", fecha=dt.date(2025, 12, 17))
+        Evento.objects.create(nombre="Anual 2024", fecha=dt.date(2024, 12, 10))
+        mentoria = Evento.objects.create(nombre="Mentoría", tipo=TipoEvento.MENTORIA, fecha=dt.date(2026, 3, 1))
+        p = Persona.objects.create(correo="s@x.cl")
+        Participacion.objects.create(persona=p, evento=e25, inscrito=True, asistio=True)
+        Participacion.objects.create(persona=p, evento=mentoria, inscrito=True, asistio=True)
+        recalcular_todo()
+        p.refresh_from_db()
+        self.assertEqual(p.puntaje, 5)  # 2025 sigue siendo el "último"; la mentoría no suma
+
+    def test_dos_eventos_el_mismo_anio(self):
+        Evento.objects.create(nombre="Anual 2026", fecha=dt.date(2026, 11, 18))
+        otro = Evento.objects.create(nombre="Clínica 2026", tipo=TipoEvento.CLINICA, fecha=dt.date(2026, 5, 1))
+        self.assertEqual(otro.codigo, "clinica-2026")
+
+
+class ImportarInscripcionesTests(Dominio):
+    ENCABEZADO = ["Timestamp", "Correo electrónico", "Nombre y apellidos", "Organización", "Número de contacto",
+                  "Categoría", "¿Tienes alguna restricción alimentaria?", "Calza Mail"]
+
+    def _csv(self, ruta, filas):
+        with open(ruta, "w", encoding="utf-8-sig", newline="") as f:
+            w = csv.writer(f)
+            w.writerow(self.ENCABEZADO)
+            w.writerows(filas)
+
+    def test_idempotente_y_mapea_columnas(self):
+        Persona.objects.create(correo="vieja@x.cl", nombre="Vieja Conocida", estado=Estado.FUERA_CHILE)
+        filas = [
+            ["10/21/2026 15:49:53", "Vieja@X.cl", "Vieja Conocida", "ISF", "", "Mentor/a", "", "SI"],
+            ["10/22/2026 09:00:00", "nueva@x.cl", "Nueva Persona", "Org", "+56922222222", "AQUA", "vegana", "NO"],
+        ]
+        with tempfile.TemporaryDirectory() as d:
+            ruta = Path(d) / "inscripciones.csv"
+            self._csv(ruta, filas)
+            nulo = open("/dev/null", "w")
+            call_command("importar_inscripciones", str(ruta), "--evento", self.ev.codigo, stdout=nulo)
+            primera = self.ev.participaciones.get(persona__correo="vieja@x.cl").fecha_inscripcion
+            call_command("importar_inscripciones", str(ruta), "--evento", self.ev.codigo, stdout=nulo)
+        self.assertEqual(Persona.objects.count(), 2)
+        self.assertEqual(self.ev.participaciones.filter(inscrito=True).count(), 2)
+        vieja = Persona.objects.get(correo="vieja@x.cl")
+        self.assertEqual(vieja.estado, Estado.CONTACTABLE)  # su inscripción desmiente "fuera de Chile"
+        self.assertEqual(vieja.vinculos_vigentes, ["Mentor/a"])
+        part = self.ev.participaciones.get(persona=vieja)
+        self.assertEqual(part.fecha_inscripcion, primera)  # no cambió al reimportar
+        self.assertEqual(part.categoria_formulario, "Mentor/a")
+        nueva = self.ev.participaciones.get(persona__correo="nueva@x.cl")
+        self.assertEqual(nueva.restriccion_alimentaria, "vegana")
+        self.assertNotIn("Calza Mail", str(nueva.logistica))
+
+    def test_evento_inexistente_da_error_claro(self):
+        from django.core.management.base import CommandError
+        with self.assertRaises(CommandError):
+            call_command("importar_inscripciones", "x.csv", "--evento", "no-existe")
+
+
+# ============================================================================
+# SPEC_checkin_qr.md §7: pruebas mínimas de la pantalla pública y el panel.
+# ============================================================================
+class CheckinVistasTests(Dominio):
+    def setUp(self):
+        super().setUp()
+        cache.clear()
+        self.abrir()
+        self.ana = Persona.objects.create(
+            correo="ana@isf.cl", nombre="Ana Pérez", organizacion="Empresa X", telefono="+56911111111",
+            correos_alternativos="ana.perez@gmail.com",
+        )
+        Participacion.objects.create(persona=self.ana, evento=self.ev, inscrito=True,
+                                     restriccion_alimentaria="celiaca")
+        self.url = reverse("checkin_publico", args=[self.ev.codigo])
+
+    def test_correo_inscrito_queda_registrado_por_qr(self):
+        r = self.client.post(self.url, {"correo": "ana@isf.cl"})
+        self.assertContains(r, "¡Bienvenido/a, Ana!")
+        p = self.ev.participaciones.get(persona=self.ana)
+        self.assertTrue(p.asistio)
+        self.assertIsNotNone(p.hora_llegada)
+        self.assertEqual(p.origen_llegada, OrigenLlegada.QR)
+
+    def test_mayusculas_espacios_y_alternativo(self):
+        self.client.post(self.url, {"correo": "  ANA.PEREZ@Gmail.com "})
+        self.assertTrue(self.ev.participaciones.get(persona=self.ana).asistio)
+
+    def test_segundo_registro_no_cambia_la_hora(self):
+        self.client.post(self.url, {"correo": "ana@isf.cl"})
+        hora = self.ev.participaciones.get(persona=self.ana).hora_llegada
+        r = self.client.post(self.url, {"correo": "ana@isf.cl"})
+        self.assertContains(r, "Ya estabas registrado/a")
+        self.assertEqual(self.ev.participaciones.get(persona=self.ana).hora_llegada, hora)
+
+    def test_desconocido_crea_una_persona_y_una_participacion(self):
+        r = self.client.post(self.url, {"correo": "nuevo@x.cl"})
+        self.assertContains(r, 'name="nombre"')
+        self.client.post(self.url, {"correo": "nuevo@x.cl", "nombre": "juan soto", "organizacion": "Org"})
+        r = self.client.post(self.url, {"correo": "nuevo@x.cl", "nombre": "juan soto"})
+        self.assertContains(r, "Ya estabas registrado/a")
+        self.assertEqual(Persona.objects.filter(correo="nuevo@x.cl").count(), 1)
+        nuevo = Persona.objects.get(correo="nuevo@x.cl")
+        self.assertEqual((nuevo.grupo, nuevo.estado), (Grupo.SIN_CLASIFICAR, Estado.CONTACTABLE))
+        self.assertEqual(self.ev.participaciones.filter(persona=nuevo).count(), 1)
+
+    def test_cerrado_no_registra(self):
+        self.ev.checkin_abierto = False; self.ev.save()
+        r = self.client.post(self.url, {"correo": "ana@isf.cl"})
+        self.assertContains(r, "aún no está abierto")
+        self.assertFalse(self.ev.participaciones.get(persona=self.ana).asistio)
+
+    def test_get_no_modifica_datos(self):
+        r = self.client.get(self.url, {"correo": "ana@isf.cl"})
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, 'name="robots" content="noindex')
+        self.assertFalse(self.ev.participaciones.get(persona=self.ana).asistio)
+
+    def test_pagina_publica_no_muestra_datos_de_la_persona(self):
+        r = self.client.post(self.url, {"correo": "ana@isf.cl"})
+        html = r.content.decode()
+        for dato in ("ana@isf.cl", "Empresa X", "celiaca", "Pérez", "+569"):
+            self.assertNotIn(dato, html)
+
+    def test_limite_de_intentos_por_ip(self):
+        with override_settings(CHECKIN_LIMITE_POR_MINUTO=2):
+            for _ in range(2):
+                self.client.post(self.url, {"correo": "x@x.cl"})
+            r = self.client.post(self.url, {"correo": "ana@isf.cl"})
+        self.assertEqual(r.status_code, 429)
+        self.assertFalse(self.ev.participaciones.get(persona=self.ana).asistio)
+
+    def test_panel_qr_y_exportacion_exigen_login(self):
+        c = self.ev.codigo
+        urls = [reverse("checkin_eventos"), reverse("checkin_panel", args=[c]), reverse("checkin_estado", args=[c]),
+                reverse("checkin_qr", args=[c]), reverse("checkin_qr_svg", args=[c]),
+                reverse("checkin_csv", args=[c]), reverse("checkin_respaldo", args=[c])]
+        for url in urls:
+            r = self.client.get(url)
+            self.assertEqual(r.status_code, 302, url)
+            self.assertIn(reverse("login"), r["Location"])
+        r = self.client.post(reverse("checkin_marcar", args=[c, self.ana.persona_id]))
+        self.assertEqual(r.status_code, 302)
+        self.assertFalse(self.ev.participaciones.get(persona=self.ana).asistio)
+
+    def test_panel_marca_manual_csv_y_respaldo(self):
+        self.client.force_login(User.objects.create_user("equipo", password="clave-de-prueba-123"))
+        c = self.ev.codigo
+        self.assertContains(self.client.get(reverse("checkin_panel", args=[c]), {"q": "ana"}), "Marcar llegada")
+        self.client.post(reverse("checkin_marcar", args=[c, self.ana.persona_id]))
+        p = self.ev.participaciones.get(persona=self.ana)
+        self.assertEqual((p.asistio, p.origen_llegada), (True, OrigenLlegada.MANUAL))
+        self.assertContains(self.client.get(reverse("checkin_estado", args=[c])), "Ana Pérez")
+        svg = self.client.get(reverse("checkin_qr_svg", args=[c]))
+        self.assertEqual(svg["Content-Type"], "image/svg+xml")
+        self.assertContains(self.client.get(reverse("checkin_respaldo", args=[c])), "Ana Pérez")
+
+        texto = self.client.get(reverse("checkin_csv", args=[c])).content.decode("utf-8-sig")
+        encabezado = texto.splitlines()[0]
+        self.assertEqual(encabezado, "persona_id,nombre,correo,inscrito,hora_llegada,origen_llegada")
+        self.assertIn("ana@isf.cl", texto)
+        self.assertNotIn("celiaca", texto)
+        self.assertNotIn("569", texto)
+
+    def test_abrir_y_cerrar_desde_el_panel(self):
+        self.client.force_login(User.objects.create_user("equipo", password="clave-de-prueba-123"))
+        self.client.post(reverse("checkin_abrir_cerrar", args=[self.ev.codigo]))
+        self.ev.refresh_from_db()
+        self.assertFalse(self.ev.checkin_abierto)
+        self.assertEqual(self.client.get(reverse("checkin_abrir_cerrar", args=[self.ev.codigo])).status_code, 405)
+
+    @override_settings(PUBLIC_BASE_URL="https://isf.ejemplo.cl")
+    def test_qr_usa_la_url_publica(self):
+        self.client.force_login(User.objects.create_user("equipo", password="clave-de-prueba-123"))
+        r = self.client.get(reverse("checkin_qr", args=[self.ev.codigo]))
+        self.assertContains(r, "https://isf.ejemplo.cl/checkin/anual-2026/")

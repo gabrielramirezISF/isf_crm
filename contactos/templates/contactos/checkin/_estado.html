@@ -1,0 +1,37 @@
+<div class="row g-3 mb-3">
+  <div class="col-6 col-md-4">
+    <div class="card h-100 border-start border-4 border-success"><div class="card-body">
+      <div class="text-muted small">Llegaron / inscritos</div>
+      <div class="stat text-success">{{ embudo.asistieron_inscritos }} <span class="text-muted fs-5">/ {{ embudo.inscritos }}</span></div>
+    </div></div>
+  </div>
+  <div class="col-6 col-md-4">
+    <div class="card h-100 border-start border-4 border-warning"><div class="card-body">
+      <div class="text-muted small">Llegaron sin inscripción</div>
+      <div class="stat text-warning">{{ embudo.llegaron_sin_inscripcion }}</div>
+    </div></div>
+  </div>
+  <div class="col-12 col-md-4">
+    <div class="card h-100 border-start border-4 border-primary"><div class="card-body">
+      <div class="text-muted small">Total en el lugar</div>
+      <div class="stat text-primary">{{ embudo.asistieron }}</div>
+    </div></div>
+  </div>
+</div>
+<div class="card"><div class="card-body">
+  <h2 class="h6 text-uppercase text-muted">Últimas llegadas <span class="small text-lowercase">(se actualiza cada 15 s · {% now "H:i:s" %})</span></h2>
+  <table class="table table-sm mb-0">
+    <thead><tr><th>Hora</th><th>Nombre</th><th>Origen</th></tr></thead>
+    <tbody>
+    {% for p in llegadas %}
+      <tr>
+        <td>{{ p.hora_llegada|time:"H:i" }}</td>
+        <td>{{ p.persona.nombre|default:p.persona.correo }}</td>
+        <td>{{ p.get_origen_llegada_display }}{% if p.llego_sin_inscripcion %} <span class="badge bg-warning text-dark">sin inscripción</span>{% endif %}</td>
+      </tr>
+    {% empty %}
+      <tr><td colspan="3" class="text-muted">Todavía no llega nadie.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div></div>

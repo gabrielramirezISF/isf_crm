@@ -1,0 +1,22 @@
+{% load static %}<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <title>QR · {{ evento.nombre }}</title>
+  <link href="{% static 'contactos/vendor/bootstrap/bootstrap.min.css' %}" rel="stylesheet">
+  <style>
+    body { text-align: center; padding: 2rem 1rem; }
+    .qr { width: min(80vw, 14cm); height: auto; }
+    @media print { .no-imprimir { display: none; } body { padding: 0; } }
+  </style>
+</head>
+<body>
+  <h1 class="display-6 fw-semibold">{{ evento.nombre }}</h1>
+  <p class="lead">Escanea para registrar tu llegada</p>
+  <img class="qr my-3" src="{% url 'checkin_qr_svg' evento.codigo %}" alt="Código QR del registro de asistencia">
+  <p class="fs-5"><code>{{ url_publica }}</code></p>
+  <button class="btn btn-primary no-imprimir" onclick="window.print()">Imprimir</button>
+</body>
+</html>

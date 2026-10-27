@@ -1,0 +1,36 @@
+{% load static %}<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Lista de respaldo · {{ evento.nombre }}</title>
+  <link href="{% static 'contactos/vendor/bootstrap/bootstrap.min.css' %}" rel="stylesheet">
+  <style>
+    body { padding: 1.5rem; font-size: 12pt; }
+    .casilla { width: 1.2rem; height: 1.2rem; border: 1.5px solid #000; display: inline-block; }
+    td, th { padding: .3rem .5rem !important; }
+    @media print { .no-imprimir { display: none; } body { padding: 0; } }
+  </style>
+</head>
+<body>
+  {# Uso interno en la puerta: por si se cae internet. Sin teléfonos ni restricciones. #}
+  <div class="d-flex justify-content-between align-items-end mb-2">
+    <div>
+      <h1 class="h4 mb-0">{{ evento.nombre }} · inscritos</h1>
+      <div class="small text-muted">{{ inscritos|length }} personas · impreso {% now "d-m-Y H:i" %}</div>
+    </div>
+    <button class="btn btn-primary no-imprimir" onclick="window.print()">Imprimir</button>
+  </div>
+  <table class="table table-sm table-bordered">
+    <thead><tr><th style="width:2.5rem">Llegó</th><th>Nombre</th><th>Organización</th></tr></thead>
+    <tbody>
+    {% for p in inscritos %}
+      <tr><td class="text-center"><span class="casilla"></span></td><td>{{ p.persona.nombre|default:p.persona.correo }}</td><td>{{ p.persona.organizacion }}</td></tr>
+    {% empty %}
+      <tr><td colspan="3" class="text-muted">No hay inscritos en este evento.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</body>
+</html>

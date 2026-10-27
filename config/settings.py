@@ -124,3 +124,11 @@ STATIC_URL = "static/"
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+
+# Check-in con QR. La URL pública del sitio (va dentro del QR), por ejemplo
+# https://usuario.pythonanywhere.com. Si no está, se usa la de la petición y el panel avisa.
+PUBLIC_BASE_URL = os.environ.get("PUBLIC_BASE_URL", "").rstrip("/")
+
+# Intentos por IP por minuto en la pantalla pública. Generoso: el wifi del lugar es compartido.
+CHECKIN_LIMITE_POR_MINUTO = 30

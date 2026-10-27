@@ -13,8 +13,11 @@ from django.contrib import admin, messages
 from django.db.models import Q
 from django.http import HttpResponse
 
-from .models import CambioEstado, Estado, Evento, Participacion, Persona, Reglas
+from .models import (
+    CambioEstado, Estado, Evento, Participacion, Persona, PersonaVinculo, PosibleDuplicado, Reglas, Vinculo,
+)
 from .scoring import recalcular_todo
+from .servicios import buscar_por_correo
 
 admin.site.site_header = "ISF · Contactos Evento Anual"
 admin.site.site_title = "ISF Contactos"
@@ -27,10 +30,7 @@ class PersonaForm(forms.ModelForm):
         fields = "__all__"
 
     def _ya_existe(self, correo):
-        otras = Persona.objects.exclude(pk=self.instance.pk)
-        return otras.filter(
-            Q(correo__iexact=correo) | Q(correos_alternativos__icontains=correo)
-        ).first()
+        return buscar_por_correo(correo, excluir_pk=self.instance.pk)
 
     def clean_correo(self):
         correo = self.cleaned_data["correo"].strip().lower()
@@ -68,7 +68,14 @@ class DentroDelCupoFilter(admin.SimpleListFilter):
 class ParticipacionInline(admin.TabularInline):
     model = Participacion
     extra = 0
-    fields = ["evento", "invitado", "inscrito", "fecha_inscripcion", "respondio", "asistio", "categoria_formulario"]
+    fields = ["evento", "invitado", "inscrito", "fecha_inscripcion", "respondio", "no_puede", "asistio",
+              "hora_llegada", "origen_llegada", "categoria_formulario"]
+
+
+class PersonaVinculoInline(admin.TabularInline):
+    model = PersonaVinculo
+    extra = 0
+    fields = ["vinculo", "desde", "hasta", "asignado_por"]
 
 
 class CambioEstadoInline(admin.TabularInline):
@@ -103,7 +110,7 @@ class PersonaAdmin(admin.ModelAdmin):
         ("Prioridad (calculada)", {"fields": ["puntaje", "prioridad", "orden_sugerido"]}),
         ("Registro", {"fields": ["creado", "actualizado"], "classes": ["collapse"]}),
     ]
-    inlines = [ParticipacionInline, CambioEstadoInline]
+    inlines = [PersonaVinculoInline, ParticipacionInline, CambioEstadoInline]
     list_per_page = 50
     actions = ["marcar_baja", "marcar_correo_problema", "marcar_contactable", "exportar_csv", "recalcular"]
 
@@ -155,15 +162,36 @@ class PersonaAdmin(admin.ModelAdmin):
 
 @admin.register(Participacion)
 class ParticipacionAdmin(admin.ModelAdmin):
-    list_display = ["persona", "evento", "invitado", "inscrito", "respondio", "asistio", "fecha_inscripcion"]
-    list_filter = ["evento", "inscrito", "asistio", "respondio", "invitado"]
+    list_display = ["persona", "evento", "invitado", "inscrito", "respondio", "asistio", "fecha_inscripcion", "hora_llegada", "origen_llegada"]
+    list_filter = ["evento", "inscrito", "asistio", "respondio", "invitado", "no_puede", "origen_inscripcion", "origen_llegada"]
     search_fields = ["persona__nombre", "persona__correo"]
     autocomplete_fields = ["persona"]
 
 
 @admin.register(Evento)
 class EventoAdmin(admin.ModelAdmin):
-    list_display = ["nombre", "anio", "fecha"]
+    list_display = ["nombre", "codigo", "tipo", "anio", "fecha", "estado", "checkin_abierto"]
+    list_filter = ["tipo", "estado"]
+    fields = ["nombre", "codigo", "tipo", "fecha", "anio", "estado", "lugar", "cupo_maximo", "checkin_abierto"]
+
+
+@admin.register(Vinculo)
+class VinculoAdmin(admin.ModelAdmin):
+    list_display = ["nombre", "activo"]
+
+    def has_delete_permission(self, request, obj=None):
+        return False  # se archiva, no se borra
+
+
+@admin.register(PosibleDuplicado)
+class PosibleDuplicadoAdmin(admin.ModelAdmin):
+    list_display = ["persona_nueva", "persona_existente", "detectado", "resuelto"]
+    list_filter = ["resuelto"]
+    list_editable = ["resuelto"]
+    readonly_fields = ["persona_nueva", "persona_existente", "detectado"]
+
+    def has_add_permission(self, request):
+        return False
 
 
 @admin.register(CambioEstado)
