@@ -62,6 +62,13 @@ class Persona(models.Model):
         blank=True, help_text="Otros correos de la misma persona, separados por coma."
     )
     nombre = models.CharField(max_length=200, blank=True)
+    apodo = models.CharField(
+        max_length=100, blank=True, help_text="Nombre usado en el correo, si es distinto (Maestros)."
+    )
+    rut = models.CharField(
+        "RUT", max_length=20, blank=True,
+        help_text="Solo dato de contacto: no identifica a la persona ni se exige único.",
+    )
     organizacion = models.CharField("organización", max_length=200, blank=True)
     relacion = models.CharField(
         "relación", max_length=100, blank=True,
@@ -324,6 +331,33 @@ class Participacion(models.Model):
     @property
     def llego_sin_inscripcion(self):
         return bool(self.asistio) and not self.inscrito
+
+
+class Rol(models.TextChoices):
+    INVITADO = "invitado", "Invitado"
+    AUTORIDAD = "autoridad", "Autoridad"
+    STAFF = "staff", "Staff"
+    NOMINADOR = "nominador", "Nominador"
+
+
+class RolEvento(models.Model):
+    """Qué es una persona en un evento concreto (ADR-007). Convive con Participación:
+
+    no cambia su estado ni la reemplaza, son independientes (CORE invariante 7).
+    """
+
+    persona = models.ForeignKey(Persona, on_delete=models.CASCADE, related_name="roles_evento")
+    evento = models.ForeignKey(Evento, on_delete=models.CASCADE, related_name="roles")
+    rol = models.CharField(max_length=20, choices=Rol.choices)
+    creado = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = [("persona", "evento", "rol")]
+        verbose_name = "rol en el evento"
+        verbose_name_plural = "roles en el evento"
+
+    def __str__(self):
+        return f"{self.persona} · {self.get_rol_display()} en {self.evento}"
 
 
 class Vinculo(models.Model):

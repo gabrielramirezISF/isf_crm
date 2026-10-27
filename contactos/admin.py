@@ -14,7 +14,8 @@ from django.db.models import Q
 from django.http import HttpResponse
 
 from .models import (
-    CambioEstado, Estado, Evento, Participacion, Persona, PersonaVinculo, PosibleDuplicado, Reglas, Vinculo,
+    CambioEstado, Estado, Evento, Participacion, Persona, PersonaVinculo, PosibleDuplicado, Reglas, RolEvento,
+    Vinculo,
 )
 from .scoring import recalcular_todo
 from .servicios import buscar_por_correo
@@ -78,6 +79,13 @@ class PersonaVinculoInline(admin.TabularInline):
     fields = ["vinculo", "desde", "hasta", "asignado_por"]
 
 
+class RolEventoInline(admin.TabularInline):
+    model = RolEvento
+    extra = 0
+    fields = ["evento", "rol", "creado"]
+    readonly_fields = ["creado"]
+
+
 class CambioEstadoInline(admin.TabularInline):
     model = CambioEstado
     extra = 0
@@ -104,13 +112,13 @@ class PersonaAdmin(admin.ModelAdmin):
     search_fields = ["persona_id", "nombre", "correo", "correos_alternativos", "organizacion", "relacion"]
     readonly_fields = ["persona_id", "puntaje", "prioridad", "orden_sugerido", "creado", "actualizado"]
     fieldsets = [
-        (None, {"fields": ["persona_id", "nombre", "correo", "correos_alternativos", "telefono"]}),
+        (None, {"fields": ["persona_id", "nombre", "apodo", "correo", "correos_alternativos", "telefono", "rut"]}),
         ("Relación con ISF", {"fields": ["organizacion", "relacion", "grupo", "posible_socio_actual"]}),
         ("Estado", {"fields": ["estado", "comentarios"]}),
         ("Prioridad (calculada)", {"fields": ["puntaje", "prioridad", "orden_sugerido"]}),
         ("Registro", {"fields": ["creado", "actualizado"], "classes": ["collapse"]}),
     ]
-    inlines = [PersonaVinculoInline, ParticipacionInline, CambioEstadoInline]
+    inlines = [PersonaVinculoInline, ParticipacionInline, RolEventoInline, CambioEstadoInline]
     list_per_page = 50
     actions = ["marcar_baja", "marcar_correo_problema", "marcar_contactable", "exportar_csv", "recalcular"]
 
@@ -164,6 +172,14 @@ class PersonaAdmin(admin.ModelAdmin):
 class ParticipacionAdmin(admin.ModelAdmin):
     list_display = ["persona", "evento", "invitado", "inscrito", "respondio", "asistio", "fecha_inscripcion", "hora_llegada", "origen_llegada"]
     list_filter = ["evento", "inscrito", "asistio", "respondio", "invitado", "no_puede", "origen_inscripcion", "origen_llegada"]
+    search_fields = ["persona__nombre", "persona__correo"]
+    autocomplete_fields = ["persona"]
+
+
+@admin.register(RolEvento)
+class RolEventoAdmin(admin.ModelAdmin):
+    list_display = ["persona", "evento", "rol", "creado"]
+    list_filter = ["evento", "rol"]
     search_fields = ["persona__nombre", "persona__correo"]
     autocomplete_fields = ["persona"]
 
