@@ -448,6 +448,96 @@ class RolEventoTests(Dominio):
         self.assertFalse(self.ev.participaciones.exists())
 
 
+class ImportarExcelMaestroTests(Dominio):
+    """FEAT-002: importar el Excel maestro 2026 completo (varias hojas)."""
+
+    def _excel(self, ruta, con_staff=True):
+        wb = Workbook()
+        ws = wb.active; ws.title = "Inscripciones"
+        ws.append(["Timestamp", "Correo electrónico", "Nombre y apellidos", "Organización",
+                   "Número de contacto", "¿Tienes alguna restricción alimentaria?", "Categoría"])
+        ws.append(["10/21/2026 15:49:53", "Ana@X.cl", "Ana Pérez", "ISF", "+56911111111", "vegana", "Mentor/a"])
+
+        wi = wb.create_sheet("Lista invitados")
+        wi.append(["id", "Nombre", "Apellido", "Correo", "Relación", "ORGANIZACIÓN",
+                   "POR REVISAR/Comentarios", "Correo Alternativo"])
+        wi.append(["P0001", "Beto", "Soto", "beto@x.cl", "Histórico", "", " ", ""])
+        wi.append(["P0002", "Clara", "Reyes", "clara@x.cl", "Histórico", "", "Rebotó", ""])
+
+        wn = wb.create_sheet("Form No pueden")
+        wn.append(["Timestamp", "Correo electrónico"])
+        wn.append([dt.datetime(2026, 10, 21, 16, 0, 0), "dario@x.cl"])
+
+        wnom = wb.create_sheet("lista nominadores")
+        wnom.append(["Nombre", "Apellido", "Correo", "Relación"])
+        wnom.append(["Eva", "Nom", "eva@x.cl", "Equipo Nacional"])
+
+        waut = wb.create_sheet("Autoridades a Invitar")
+        waut.append(["Nombre", "Apellido", "Correo", "Relación", "ORGANIZACIÓN"])
+        waut.append(["Fede", "Aut", "fede@x.cl", "Alianza", "Universidad X"])
+
+        wst = wb.create_sheet("Staff")
+        if con_staff:
+            wst.append(["Nombre", "Apellido", "Correo"])
+
+        wpm = wb.create_sheet("para_mail")
+        wpm.append(["identificación", "Nombre", "Apellido", "mail", "Nombre 2", "estado envío", "token"])
+        wpm.append(["P0001", "Beto", "Soto", "beto@x.cl", "Betito", "ENVIADO", "tok-1"])
+        wpm.append(["PX", "Nadie", "Nadie", "nadie@x.cl", "Nadita", "ENVIADO", "tok-2"])
+
+        wb.save(ruta)
+
+    def test_idempotente_e_importa_todas_las_hojas(self):
+        with tempfile.TemporaryDirectory() as d:
+            ruta = Path(d) / "maestro.xlsx"; self._excel(ruta)
+            nulo = open("/dev/null", "w")
+            call_command("importar_excel_maestro", str(ruta), "--evento", self.ev.codigo, stdout=nulo)
+            n_personas = Persona.objects.count()
+            n_roles = RolEvento.objects.count()
+            call_command("importar_excel_maestro", str(ruta), "--evento", self.ev.codigo, stdout=nulo)  # idempotente
+            self.assertEqual(Persona.objects.count(), n_personas)
+            self.assertEqual(RolEvento.objects.count(), n_roles)
+
+        ana = Persona.objects.get(correo="ana@x.cl")
+        self.assertTrue(self.ev.participaciones.get(persona=ana).inscrito)
+
+        beto = Persona.objects.get(correo="beto@x.cl")
+        self.assertEqual(RolEvento.objects.get(persona=beto, evento=self.ev).rol, Rol.INVITADO)
+        self.assertTrue(self.ev.participaciones.get(persona=beto).invitado)
+        self.assertEqual(beto.apodo, "Betito")  # viene de para_mail
+
+        dario = Persona.objects.get(correo="dario@x.cl")
+        self.assertEqual(self.ev.participaciones.get(persona=dario).estado, "no_puede")
+
+        eva = Persona.objects.get(correo="eva@x.cl")
+        self.assertEqual(RolEvento.objects.get(persona=eva, evento=self.ev).rol, Rol.NOMINADOR)
+        self.assertTrue(self.ev.participaciones.get(persona=eva).invitado)  # también puede pasar por el check-in
+
+        fede = Persona.objects.get(correo="fede@x.cl")
+        self.assertEqual(RolEvento.objects.get(persona=fede, evento=self.ev).rol, Rol.AUTORIDAD)
+
+        self.assertFalse(Persona.objects.filter(correo="nadie@x.cl").exists())  # para_mail no crea personas
+
+    def test_rebote_no_pisa_una_baja_ya_registrada(self):
+        clara = Persona.objects.create(correo="clara@x.cl", nombre="Clara Reyes", estado=Estado.BAJA)
+        with tempfile.TemporaryDirectory() as d:
+            ruta = Path(d) / "maestro.xlsx"; self._excel(ruta)
+            call_command("importar_excel_maestro", str(ruta), "--evento", self.ev.codigo, stdout=open("/dev/null", "w"))
+        clara.refresh_from_db()
+        self.assertEqual(clara.estado, Estado.BAJA)
+
+    def test_hoja_staff_vacia_no_rompe(self):
+        with tempfile.TemporaryDirectory() as d:
+            ruta = Path(d) / "maestro.xlsx"; self._excel(ruta, con_staff=False)
+            call_command("importar_excel_maestro", str(ruta), "--evento", self.ev.codigo, stdout=open("/dev/null", "w"))
+        self.assertFalse(RolEvento.objects.filter(rol=Rol.STAFF).exists())
+
+    def test_evento_inexistente_da_error_claro(self):
+        from django.core.management.base import CommandError
+        with self.assertRaises(CommandError):
+            call_command("importar_excel_maestro", "x.xlsx", "--evento", "no-existe")
+
+
 class VinculosTests(TestCase):
     def test_traduccion_del_texto_de_alvaro(self):
         self.assertEqual(vinculo_desde_texto("Mentor/a"), ("Mentor/a", False))
